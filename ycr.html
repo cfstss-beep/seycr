@@ -91,7 +91,8 @@
   <div class="label">名前の読み上げ</div>
   <select id="readMode">
     <option value="0">読まない</option>
-    <option value="4">最初の4文字</option>
+    <option value="5">最初の5文字</option>
+    <option value="10">最初の10文字</option>
     <option value="full">フルネーム</option>
   </select>
 
@@ -298,15 +299,27 @@ function speakNext(){
   if(!text){ if(el) el.classList.remove('reading'); speakNext(); return; }
 
   let namePart='';
-  if(readMode==='4') namePart=c.author.slice(0,4)+'、';
+  if(readMode==='5') namePart=c.author.slice(0,5)+'、';
+  else if(readMode==='10') namePart=c.author.slice(0,10)+'、';
   else if(readMode==='full') namePart=c.author+'、';
 
   const uttr=new SpeechSynthesisUtterance(namePart+text);
   uttr.lang='ja-JP';
   uttr.rate=speechRate;
+  uttr.volume=0; // フェードイン：最初は無音
   currentUttr=uttr;
   isSpeaking=true;
   setStatus('ok','読み上げ中...');
+
+  // 0.5秒かけて音量を0→1にフェードイン
+  uttr.onstart=()=>{
+    let vol=0;
+    const fadeStep=setInterval(()=>{
+      vol=Math.min(1, vol+0.05);
+      uttr.volume=vol;
+      if(vol>=1) clearInterval(fadeStep);
+    },25); // 25ms × 20回 = 500ms
+  };
 
   uttr.onend=()=>{
     isSpeaking=false; currentUttr=null;
