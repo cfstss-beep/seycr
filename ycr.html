@@ -3,80 +3,222 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>コメ読み DEBUG版</title>
+<title>コメ読み PRO</title>
 <style>
-body { background:#111; color:#fff; font-family:sans-serif; padding:20px;}
-input,button { width:100%; padding:12px; margin:6px 0;}
-#log { white-space:pre-wrap; font-size:12px; background:#000; padding:10px;}
+body { margin:0; font-family:-apple-system; background:#0d0d0d; color:#fff; }
+.container { padding:20px; }
+h1 { font-size:22px; }
+
+input, select, button {
+  width:100%;
+  padding:14px;
+  margin:6px 0;
+  border-radius:10px;
+  border:none;
+  font-size:15px;
+}
+
+input, select { background:#1a1a1a; color:#fff; }
+
+button { background:#e63946; color:#fff; font-weight:bold; }
+
+#status { margin:10px 0; font-size:13px; color:#aaa; }
+
+#log {
+  background:#111;
+  border-radius:10px;
+  padding:10px;
+  height:300px;
+  overflow:auto;
+  font-size:13px;
+}
+
+.msg {
+  padding:6px 0;
+  border-bottom:1px solid #222;
+}
 </style>
 </head>
 <body>
 
-<h2>コメ読み（デバッグ）</h2>
+<div class="container">
+<h1>🎙 コメ読み PRO</h1>
 
 <input id="apiKey" placeholder="APIキー">
-<input id="videoId" placeholder="URL or ID">
-<button onclick="start()">開始</button>
+<input id="videoId" placeholder="YouTube URL or ID">
 
+<select id="readMode">
+  <option value="0">名前読まない</option>
+  <option value="5">名前5文字</option>
+  <option value="full">フルネーム</option>
+</select>
+
+<button onclick="start()">▶ 開始</button>
+<button onclick="clearLog()">🗑 ログクリア</button>
+
+<div id="status">待機中</div>
 <div id="log"></div>
+</div>
 
 <script>
-function log(msg){
-  document.getElementById("log").textContent += msg + "\n";
+let apiKey, videoId, liveChatId;
+let pageToken = null;
+let queue = [];
+let isSpeaking = false;
+let synth = speechSynthesis;
+let readMode = "0";
+
+// ▼ 保存読み込み
+window.onload = ()=>{
+  const k = localStorage.getItem("yt_api_key");
+  const v = localStorage.getItem("yt_video_id");
+  const r = localStorage.getItem("yt_read_mode");
+
+  if(k) document.getElementById("apiKey").value = k;
+  if(v) document.getElementById("videoId").value = v;
+  if(r) document.getElementById("readMode").value = r;
+};
+
+function save(){
+  localStorage.setItem("yt_api_key", apiKey);
+  localStorage.setItem("yt_video_id", videoId);
+  localStorage.setItem("yt_read_mode", readMode);
 }
 
+function setStatus(t){
+  document.getElementById("status").textContent = t;
+}
+
+function addLog(text){
+  const div = document.createElement("div");
+  div.className = "msg";
+  div.textContent = text;
+  document.getElementById("log").prepend(div);
+}
+
+// 🔥ログクリア
+function clearLog(){
+  document.getElementById("log").innerHTML = "";
+}
+
+// ID抽出
 function extractVideoId(url){
-  const m = url.match(/(?:v=|youtu\.be\/)([A-Za-z0-9_-]{11})/);
+  const m = url.match(/(?:v=|youtu\.be\/|live\/)([A-Za-z0-9_-]{11})/);
   return m ? m[1] : url;
 }
 
+// ▼ 開始
 async function start(){
-  log("START押された");
+  speechSynthesis.cancel();
 
-  const apiKey = document.getElementById("apiKey").value.trim();
-  const videoId = extractVideoId(document.getElementById("videoId").value.trim());
+  apiKey = document.getElementById("apiKey").value.trim();
+  videoId = extractVideoId(document.getElementById("videoId").value.trim());
+  readMode = document.getElementById("readMode").value;
 
   if(!apiKey || !videoId){
-    log("入力不足");
+    alert("入力して");
     return;
   }
 
-  try{
-    log("動画情報取得中...");
+  save();
+  setStatus("接続中...");
 
+  try{
     const res = await fetch(
       `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${apiKey}`
     );
-
     const data = await res.json();
-    log(JSON.stringify(data, null, 2));
 
     if(!data.items || data.items.length === 0){
-      log("❌ 動画見つからない");
+      setStatus("動画見つからない");
       return;
     }
 
-    const chatId = data.items[0].liveStreamingDetails?.activeLiveChatId;
+    liveChatId = data.items[0].liveStreamingDetails?.activeLiveChatId;
 
-    if(!chatId){
-      log("❌ ライブじゃない or チャット無効");
+    if(!liveChatId){
+      setStatus("ライブじゃない");
       return;
     }
 
-    log("✅ chatId取得: " + chatId);
-
-    // コメント取得テスト
-    const res2 = await fetch(
-      `https://www.googleapis.com/youtube/v3/liveChat/messages?liveChatId=${chatId}&part=snippet&key=${apiKey}`
-    );
-
-    const data2 = await res2.json();
-    log("コメント取得結果:");
-    log(JSON.stringify(data2, null, 2));
+    setStatus("接続OK");
+    loop();
 
   }catch(e){
-    log("❌ エラー: " + e.message);
+    setStatus("エラー");
   }
+}
+
+// ▼ コメント取得
+async function loop(){
+  try{
+    let url = `https://www.googleapis.com/youtube/v3/liveChat/messages?liveChatId=${liveChatId}&part=snippet,authorDetails&key=${apiKey}`;
+    if(pageToken) url += `&pageToken=${pageToken}`;
+
+    const res = await fetch(url);
+    const data = await res.json();
+
+    pageToken = data.nextPageToken;
+
+    data.items.forEach(item=>{
+      if(item.snippet.type === "textMessageEvent"){
+        const text = item.snippet.displayMessage;
+        const author = item.authorDetails.displayName;
+        queue.push({text, author});
+        addLog(author + "： " + text);
+      }
+    });
+
+    if(!isSpeaking && queue.length > 0){
+      speakNext();
+    }
+
+  }catch(e){
+    setStatus("取得エラー");
+  }
+
+  setTimeout(loop, 3000);
+}
+
+// ▼ 読み上げ
+function speakNext(){
+  if(queue.length === 0) return;
+
+  let {text, author} = queue.shift();
+
+  text = text
+    .replace(/https?:\/\/\S+/g, '')
+    .replace(/[^\p{L}\p{N}\p{P}\p{Z}]/gu, '')
+    .slice(0, 80);
+
+  if(!text){
+    speakNext();
+    return;
+  }
+
+  let namePart = "";
+  if(readMode === "5") namePart = author.slice(0,5) + "、";
+  if(readMode === "full") namePart = author + "、";
+
+  const uttr = new SpeechSynthesisUtterance(namePart + text);
+  uttr.lang = "ja-JP";
+  uttr.rate = 1.1;
+
+  isSpeaking = true;
+  setStatus("読み上げ中");
+
+  uttr.onend = ()=>{
+    isSpeaking = false;
+    setStatus("待機中");
+    setTimeout(speakNext, 100);
+  };
+
+  uttr.onerror = ()=>{
+    isSpeaking = false;
+    setTimeout(speakNext, 300);
+  };
+
+  synth.speak(uttr);
 }
 </script>
 
