@@ -1,226 +1,396 @@
+
 <!DOCTYPE html>
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="コメ読み">
 <title>コメ読み PRO</title>
 <style>
-body { margin:0; font-family:-apple-system; background:#0d0d0d; color:#fff; }
-.container { padding:20px; }
-h1 { font-size:22px; }
+  :root {
+    --bg: #0d0d0d; --surface: #1a1a1a; --surface2: #242424;
+    --accent: #e63946; --text: #fff; --text2: #aaa; --text3: #555;
+    --green: #2ecc71; --radius: 10px;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: env(safe-area-inset-top, 0px);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); display: flex; flex-direction: column; height: 100dvh; }
 
-input, select, button {
-  width:100%;
-  padding:14px;
-  margin:6px 0;
-  border-radius:10px;
-  border:none;
-  font-size:15px;
-}
+  /* SETUP */
+  #setup { flex: 1; overflow-y: auto; padding: calc(20px + var(--safe-top)) 20px calc(20px + var(--safe-bottom)); }
+  #setup h1 { font-size: 22px; margin-bottom: 4px; }
+  #setup p { font-size: 13px; color: var(--text2); margin-bottom: 20px; }
 
-input, select { background:#1a1a1a; color:#fff; }
+  input, select {
+    width: 100%; padding: 14px; margin: 5px 0;
+    border-radius: var(--radius); border: 1px solid #333;
+    background: var(--surface); color: var(--text);
+    font-size: 15px; font-family: inherit; -webkit-appearance: none; outline: none;
+  }
+  input::placeholder { color: var(--text3); }
 
-button { background:#e63946; color:#fff; font-weight:bold; }
+  .label { font-size: 11px; color: var(--text2); margin: 10px 0 2px; letter-spacing: 0.5px; }
 
-#status { margin:10px 0; font-size:13px; color:#aaa; }
+  .btn { width: 100%; padding: 16px; margin: 6px 0; border-radius: var(--radius); border: none; font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; }
+  .btn-primary { background: var(--accent); color: #fff; margin-top: 14px; box-shadow: 0 4px 20px rgba(230,57,70,0.3); }
+  .btn-primary:active { opacity: 0.85; }
 
-#log {
-  background:#111;
-  border-radius:10px;
-  padding:10px;
-  height:300px;
-  overflow:auto;
-  font-size:13px;
-}
+  /* MAIN */
+  #main { display: none; flex-direction: column; height: 100dvh; }
+  #main.active { display: flex; }
 
-.msg {
-  padding:6px 0;
-  border-bottom:1px solid #222;
-}
+  .topbar { display: flex; align-items: center; gap: 10px; padding: calc(14px + var(--safe-top)) 16px 14px; background: var(--surface); border-bottom: 1px solid #222; }
+  .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .topbar-title { flex: 1; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .btn-stop { background: var(--surface2); border: 1px solid #333; color: var(--text2); font-size: 12px; font-weight: 600; padding: 7px 16px; border-radius: 8px; cursor: pointer; }
+
+  #log { flex: 1; overflow-y: auto; padding: 8px 0; -webkit-overflow-scrolling: touch; }
+  .msg { display: flex; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #1a1a1a; animation: fadeIn .2s ease; }
+  .msg.reading { background: rgba(230,57,70,0.08); border-left: 3px solid var(--accent); padding-left: 13px; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:translateY(0)} }
+  .avatar { width: 28px; height: 28px; min-width: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; color: #fff; }
+  .msg-body { flex: 1; min-width: 0; }
+  .msg-author { font-size: 11px; color: var(--text2); margin-bottom: 2px; }
+  .msg-text { font-size: 14px; line-height: 1.5; word-break: break-word; }
+
+  .bottombar { background: var(--surface); border-top: 1px solid #222; padding: 12px 16px calc(12px + var(--safe-bottom)); }
+  .controls { display: flex; gap: 8px; margin-bottom: 10px; }
+  .btn-ctrl { flex: 1; padding: 12px; border-radius: var(--radius); border: 1px solid #333; background: var(--surface2); color: var(--text); font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-ctrl.active { background: var(--accent); border-color: var(--accent); }
+
+  .status-row { display: flex; align-items: center; gap: 8px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); transition: background .3s; }
+  .status-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green); }
+  .status-dot.err { background: var(--accent); }
+  .status-dot.warn { background: #f1c40f; }
+  #status { font-size: 12px; color: var(--text2); flex: 1; }
+  #count { font-size: 11px; color: var(--text3); }
+
+  .toast { position: fixed; bottom: calc(80px + var(--safe-bottom)); left: 50%; transform: translateX(-50%); background: rgba(20,20,20,0.95); border: 1px solid #333; color: #fff; font-size: 13px; padding: 10px 18px; border-radius: 20px; z-index: 100; opacity: 0; transition: opacity .25s; white-space: nowrap; pointer-events: none; }
+  .toast.show { opacity: 1; }
 </style>
 </head>
 <body>
 
-<div class="container">
-<h1>🎙 コメ読み PRO</h1>
+<!-- SETUP -->
+<div id="setup">
+  <h1>🎙 コメ読み PRO</h1>
+  <p>2台目iPhoneで起動・前面表示のまま使用</p>
 
-<input id="apiKey" placeholder="APIキー">
-<input id="videoId" placeholder="YouTube URL or ID">
+  <div class="label">Google Cloud API キー</div>
+  <input id="apiKey" type="password" placeholder="AIza..." autocomplete="off" spellcheck="false">
 
-<select id="readMode">
-  <option value="0">名前読まない</option>
-  <option value="5">名前5文字</option>
-  <option value="full">フルネーム</option>
-</select>
+  <div class="label">YouTubeライブ URL または 動画ID</div>
+  <input id="videoId" type="text" placeholder="https://youtube.com/watch?v=..." autocomplete="off" spellcheck="false">
 
-<button onclick="start()">▶ 開始</button>
-<button onclick="clearLog()">🗑 ログクリア</button>
+  <div class="label">名前の読み上げ</div>
+  <select id="readMode">
+    <option value="0">読まない</option>
+    <option value="4">最初の4文字</option>
+    <option value="full">フルネーム</option>
+  </select>
 
-<div id="status">待機中</div>
-<div id="log"></div>
+  <div class="label">読み上げ速度</div>
+  <select id="rateSelect">
+    <option value="0.9">遅め (0.9)</option>
+    <option value="1.0">普通 (1.0)</option>
+    <option value="1.1" selected>やや速め (1.1)</option>
+    <option value="1.3">速め (1.3)</option>
+    <option value="1.5">かなり速め (1.5)</option>
+  </select>
+
+  <button class="btn btn-primary" onclick="start()">▶ 読み上げ開始</button>
 </div>
 
+<!-- MAIN -->
+<div id="main">
+  <div class="topbar">
+    <div class="live-dot"></div>
+    <div class="topbar-title" id="topTitle">接続中...</div>
+    <button class="btn-stop" onclick="stopApp()">停止</button>
+  </div>
+
+  <div id="log"></div>
+
+  <div class="bottombar">
+    <div class="controls">
+      <button class="btn-ctrl" id="btnPause" onclick="togglePause()">⏸ 一時停止</button>
+      <button class="btn-ctrl" onclick="skipCurrent()">⏭ スキップ</button>
+      <button class="btn-ctrl" onclick="clearQueue()">🗑 クリア</button>
+    </div>
+    <div class="status-row">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="status">待機中</span>
+      <span id="count"></span>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
-let apiKey, videoId, liveChatId;
-let pageToken = null;
-let queue = [];
-let isSpeaking = false;
-let synth = speechSynthesis;
-let readMode = "0";
+// ── STATE ──
+let apiKey='', videoId='', liveChatId='';
+let pageToken=null, pollTimer=null;
+let queue=[], isSpeaking=false;
+let isPaused=false, isRunning=false;
+let totalCount=0, readMode='0', speechRate=1.1;
+let seenIds=new Set();
+let currentUttr=null;
+const synth=window.speechSynthesis;
+const COLORS=['#e63946','#2196F3','#9C27B0','#FF9800','#009688','#3F51B5','#F44336'];
 
-// ▼ 保存読み込み
-window.onload = ()=>{
-  const k = localStorage.getItem("yt_api_key");
-  const v = localStorage.getItem("yt_video_id");
-  const r = localStorage.getItem("yt_read_mode");
-
-  if(k) document.getElementById("apiKey").value = k;
-  if(v) document.getElementById("videoId").value = v;
-  if(r) document.getElementById("readMode").value = r;
+// ── INIT ──
+window.onload=()=>{
+  const d=localStorage.getItem('comeProV2');
+  if(d){
+    try{
+      const o=JSON.parse(d);
+      if(o.apiKey) document.getElementById('apiKey').value=o.apiKey;
+      if(o.videoId) document.getElementById('videoId').value=o.videoId;
+      if(o.readMode) document.getElementById('readMode').value=o.readMode;
+      if(o.rate) document.getElementById('rateSelect').value=o.rate;
+    }catch(e){}
+  }
 };
 
-function save(){
-  localStorage.setItem("yt_api_key", apiKey);
-  localStorage.setItem("yt_video_id", videoId);
-  localStorage.setItem("yt_read_mode", readMode);
+// ── iOSの音声を解除（開始ボタンタップ時に呼ぶ） ──
+function unlockAudio(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    const buf=ctx.createBuffer(1,1,22050);
+    const src=ctx.createBufferSource();
+    src.buffer=buf; src.connect(ctx.destination); src.start(0);
+    ctx.resume();
+  }catch(e){}
+
+  // SpeechSynthesisを一度空で呼んでiOSの制限を解除
+  const u=new SpeechSynthesisUtterance(' ');
+  u.volume=0; u.lang='ja-JP';
+  synth.speak(u);
 }
 
-function setStatus(t){
-  document.getElementById("status").textContent = t;
+// iOSのSpeechSynthesis停止バグ対策（15秒ごとにwatchdog）
+let watchdogTimer=null;
+function startWatchdog(){
+  stopWatchdog();
+  watchdogTimer=setInterval(()=>{
+    if(isSpeaking && synth.speaking===false){
+      // 止まってたら再開
+      isSpeaking=false;
+      if(!isPaused) speakNext();
+    }
+    // iOSは長時間でpauseされることがある
+    if(synth.paused && !isPaused){
+      synth.resume();
+    }
+  },3000);
 }
+function stopWatchdog(){ clearInterval(watchdogTimer); }
 
-function addLog(text){
-  const div = document.createElement("div");
-  div.className = "msg";
-  div.textContent = text;
-  document.getElementById("log").prepend(div);
-}
-
-// 🔥ログクリア
-function clearLog(){
-  document.getElementById("log").innerHTML = "";
-}
-
-// ID抽出
-function extractVideoId(url){
-  const m = url.match(/(?:v=|youtu\.be\/|live\/)([A-Za-z0-9_-]{11})/);
-  return m ? m[1] : url;
-}
-
-// ▼ 開始
+// ── START ──
 async function start(){
-  speechSynthesis.cancel();
+  unlockAudio(); // ←ボタンタップ直後に呼ぶのが最重要
 
-  apiKey = document.getElementById("apiKey").value.trim();
-  videoId = extractVideoId(document.getElementById("videoId").value.trim());
-  readMode = document.getElementById("readMode").value;
+  apiKey=document.getElementById('apiKey').value.trim();
+  const rawId=document.getElementById('videoId').value.trim();
+  readMode=document.getElementById('readMode').value;
+  speechRate=parseFloat(document.getElementById('rateSelect').value);
+  videoId=extractVideoId(rawId);
 
-  if(!apiKey || !videoId){
-    alert("入力して");
+  if(!apiKey||!videoId){showToast('入力してください');return;}
+
+  localStorage.setItem('comeProV2',JSON.stringify({apiKey,videoId:rawId,readMode,rate:speechRate}));
+
+  setStatus('warn','接続中...');
+
+  try{
+    const res=await fetch(`https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails,snippet&id=${videoId}&key=${apiKey}`);
+    const data=await res.json();
+    if(!data.items?.length){setStatus('err','動画が見つかりません');return;}
+    const item=data.items[0];
+    liveChatId=item.liveStreamingDetails?.activeLiveChatId;
+    if(!liveChatId){setStatus('err','ライブ配信が見つかりません');return;}
+    document.getElementById('topTitle').textContent=item.snippet?.title||videoId;
+  }catch(e){
+    setStatus('err','接続エラー: '+e.message);
     return;
   }
 
-  save();
-  setStatus("接続中...");
-
-  try{
-    const res = await fetch(
-      `https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=${videoId}&key=${apiKey}`
-    );
-    const data = await res.json();
-
-    if(!data.items || data.items.length === 0){
-      setStatus("動画見つからない");
-      return;
-    }
-
-    liveChatId = data.items[0].liveStreamingDetails?.activeLiveChatId;
-
-    if(!liveChatId){
-      setStatus("ライブじゃない");
-      return;
-    }
-
-    setStatus("接続OK");
-    loop();
-
-  }catch(e){
-    setStatus("エラー");
-  }
+  isRunning=true; isPaused=false;
+  queue=[]; seenIds.clear(); totalCount=0; pageToken=null;
+  document.getElementById('setup').style.display='none';
+  document.getElementById('main').classList.add('active');
+  setStatus('ok','接続成功');
+  startWatchdog();
+  poll();
 }
 
-// ▼ コメント取得
-async function loop(){
+function stopApp(){
+  isRunning=false; clearTimeout(pollTimer);
+  synth.cancel(); stopWatchdog();
+  queue=[]; isSpeaking=false; isPaused=false;
+  document.getElementById('main').classList.remove('active');
+  document.getElementById('setup').style.display='';
+  document.getElementById('log').innerHTML='';
+  document.getElementById('btnPause').textContent='⏸ 一時停止';
+  document.getElementById('btnPause').classList.remove('active');
+}
+
+// ── POLL ──
+async function poll(){
+  if(!isRunning) return;
   try{
-    let url = `https://www.googleapis.com/youtube/v3/liveChat/messages?liveChatId=${liveChatId}&part=snippet,authorDetails&key=${apiKey}`;
-    if(pageToken) url += `&pageToken=${pageToken}`;
+    let url=`https://www.googleapis.com/youtube/v3/liveChat/messages?liveChatId=${liveChatId}&part=snippet,authorDetails&maxResults=200&key=${apiKey}`;
+    if(pageToken) url+=`&pageToken=${pageToken}`;
+    const res=await fetch(url);
+    if(!res.ok) throw new Error('HTTP '+res.status);
+    const data=await res.json();
+    pageToken=data.nextPageToken||pageToken;
 
-    const res = await fetch(url);
-    const data = await res.json();
-
-    pageToken = data.nextPageToken;
-
-    data.items.forEach(item=>{
-      if(item.snippet.type === "textMessageEvent"){
-        const text = item.snippet.displayMessage;
-        const author = item.authorDetails.displayName;
-        queue.push({text, author});
-        addLog(author + "： " + text);
-      }
+    const newItems=(data.items||[]).filter(item=>{
+      if(seenIds.has(item.id)) return false;
+      seenIds.add(item.id);
+      return item.snippet.type==='textMessageEvent';
     });
 
-    if(!isSpeaking && queue.length > 0){
-      speakNext();
-    }
+    newItems.forEach(item=>{
+      const c={
+        id:item.id,
+        author:item.authorDetails.displayName,
+        text:item.snippet.displayMessage
+      };
+      queue.push(c);
+      addMsg(c);
+      totalCount++;
+    });
 
+    document.getElementById('count').textContent=`計${totalCount}件`;
+    setStatus('ok',`取得中`);
   }catch(e){
-    setStatus("取得エラー");
+    setStatus('err','取得エラー');
   }
 
-  setTimeout(loop, 3000);
+  if(!isPaused && !isSpeaking && queue.length>0) speakNext();
+  pollTimer=setTimeout(poll,4000);
 }
 
-// ▼ 読み上げ
+// ── SPEAK ──
 function speakNext(){
-  if(queue.length === 0) return;
+  if(isPaused||isSpeaking||queue.length===0) return;
 
-  let {text, author} = queue.shift();
+  const c=queue.shift();
+  const el=document.getElementById('msg-'+c.id);
+  if(el) el.classList.add('reading');
 
-  text = text
-    .replace(/https?:\/\/\S+/g, '')
-    .replace(/[^\p{L}\p{N}\p{P}\p{Z}]/gu, '')
-    .slice(0, 80);
+  // テキスト整形
+  let text=c.text
+    .replace(/https?:\/\/\S+/g,'')  // URL除去
+    .replace(/[^\p{L}\p{N}\p{P}\p{Z}\n]/gu,' ') // 制御文字除去（日本語は保持）
+    .trim()
+    .slice(0,100);
 
-  if(!text){
-    speakNext();
-    return;
-  }
+  if(!text){ if(el) el.classList.remove('reading'); speakNext(); return; }
 
-  let namePart = "";
-  if(readMode === "5") namePart = author.slice(0,5) + "、";
-  if(readMode === "full") namePart = author + "、";
+  let namePart='';
+  if(readMode==='4') namePart=c.author.slice(0,4)+'、';
+  else if(readMode==='full') namePart=c.author+'、';
 
-  const uttr = new SpeechSynthesisUtterance(namePart + text);
-  uttr.lang = "ja-JP";
-  uttr.rate = 1.1;
+  const uttr=new SpeechSynthesisUtterance(namePart+text);
+  uttr.lang='ja-JP';
+  uttr.rate=speechRate;
+  currentUttr=uttr;
+  isSpeaking=true;
+  setStatus('ok','読み上げ中...');
 
-  isSpeaking = true;
-  setStatus("読み上げ中");
-
-  uttr.onend = ()=>{
-    isSpeaking = false;
-    setStatus("待機中");
-    setTimeout(speakNext, 100);
+  uttr.onend=()=>{
+    isSpeaking=false; currentUttr=null;
+    if(el) el.classList.remove('reading');
+    setStatus('ok','取得中');
+    if(!isPaused) setTimeout(speakNext,150);
   };
-
-  uttr.onerror = ()=>{
-    isSpeaking = false;
-    setTimeout(speakNext, 300);
+  uttr.onerror=()=>{
+    isSpeaking=false; currentUttr=null;
+    if(el) el.classList.remove('reading');
+    setTimeout(speakNext,300);
   };
 
   synth.speak(uttr);
 }
-</script>
 
+// ── CONTROLS ──
+function togglePause(){
+  isPaused=!isPaused;
+  const btn=document.getElementById('btnPause');
+  if(isPaused){
+    synth.pause();
+    btn.textContent='▶ 再開'; btn.classList.add('active');
+    setStatus('warn','一時停止中');
+  }else{
+    synth.resume();
+    btn.textContent='⏸ 一時停止'; btn.classList.remove('active');
+    setStatus('ok','取得中');
+    if(!isSpeaking && queue.length>0) speakNext();
+  }
+}
+
+function skipCurrent(){
+  synth.cancel();
+  isSpeaking=false; currentUttr=null;
+  document.querySelectorAll('.msg.reading').forEach(el=>el.classList.remove('reading'));
+  if(!isPaused && queue.length>0) setTimeout(speakNext,150);
+  showToast('スキップしました');
+}
+
+function clearQueue(){
+  queue=[];
+  synth.cancel();
+  isSpeaking=false;
+  showToast('キューをクリアしました');
+}
+
+// ── UI ──
+function addMsg(c){
+  const log=document.getElementById('log');
+  const div=document.createElement('div');
+  div.className='msg'; div.id='msg-'+c.id;
+  const color=COLORS[Math.abs(hashStr(c.author))%COLORS.length];
+  div.innerHTML=`<div class="avatar" style="background:${color}">${escHtml(c.author.slice(0,2))}</div>
+    <div class="msg-body">
+      <div class="msg-author">${escHtml(c.author)}</div>
+      <div class="msg-text">${escHtml(c.text)}</div>
+    </div>`;
+  log.appendChild(div);
+  while(log.children.length>300) log.removeChild(log.firstChild);
+  log.scrollTop=log.scrollHeight;
+}
+
+function setStatus(type,msg){
+  document.getElementById('statusDot').className='status-dot '+type;
+  document.getElementById('status').textContent=msg;
+}
+
+let toastT;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastT); toastT=setTimeout(()=>t.classList.remove('show'),2500);
+}
+
+function extractVideoId(raw){
+  const m=raw.match(/(?:v=|youtu\.be\/|shorts\/|live\/)([A-Za-z0-9_-]{11})/);
+  if(m) return m[1];
+  if(/^[A-Za-z0-9_-]{11}$/.test(raw)) return raw;
+  return raw;
+}
+
+function escHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function hashStr(s){ let h=0; for(let i=0;i<s.length;i++) h=(Math.imul(31,h)+s.charCodeAt(i))|0; return h; }
+</script>
 </body>
 </html>
